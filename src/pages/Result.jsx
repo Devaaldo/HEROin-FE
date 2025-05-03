@@ -1,119 +1,76 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 
-function Questionnaire() {
+function Result() {
 	const navigate = useNavigate();
-	const [questions, setQuestions] = useState([]);
-	const [answers, setAnswers] = useState({});
+	const location = useLocation();
+	const [result, setResult] = useState(null);
 	const [error, setError] = useState("");
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
-		// Periksa apakah user info dan hipotesis sudah diisi
-		const userInfo = sessionStorage.getItem("userInfo");
-		const selectedHypothesis = sessionStorage.getItem("selectedHypothesis");
+		// Cek apakah ada parameter id di URL
+		const params = new URLSearchParams(location.search);
+		const idFromUrl = params.get("id");
 
-		if (!userInfo) {
-			navigate("/user-info");
+		// Prioritaskan ID dari URL, jika tidak ada gunakan dari sessionStorage
+		const resultId = idFromUrl || sessionStorage.getItem("resultId");
+
+		console.log("Using result ID:", resultId); // Debug log
+
+		if (!resultId) {
+			setError("ID hasil tidak ditemukan");
+			setLoading(false);
 			return;
 		}
 
-		if (!selectedHypothesis) {
-			navigate("/hypothesis");
-			return;
-		}
-
-		// Ambil pertanyaan berdasarkan hipotesis dari backend
-		const fetchQuestions = async () => {
+		// Ambil hasil dari backend
+		const fetchResult = async () => {
 			try {
 				const response = await axios.get(
-					`http://localhost:5000/api/questions/${selectedHypothesis}`
+					`http://localhost:5000/api/result/${resultId}`
 				);
-				setQuestions(response.data);
-
-				// Inisialisasi object answers dengan id pertanyaan sebagai key
-				const initialAnswers = {};
-				response.data.forEach((question) => {
-					initialAnswers[question.id] = "";
-				});
-				setAnswers(initialAnswers);
-
+				console.log("Result data received:", response.data); // Debug log
+				setResult(response.data);
 				setLoading(false);
 			} catch (err) {
-				setError("Gagal mengambil data pertanyaan");
+				setError("Gagal mengambil hasil analisis");
 				setLoading(false);
-				console.error(err);
+				console.error("Error fetching result:", err);
 			}
 		};
 
-		fetchQuestions();
-	}, [navigate]);
+		fetchResult();
+	}, [location.search]);
 
-	const handleAnswerChange = (questionId, value) => {
-		setAnswers((prevAnswers) => ({
-			...prevAnswers,
-			[questionId]: value,
-		}));
-	};
-
-	const handleSubmit = async (e) => {
-		e.preventDefault();
-
-		// Validasi semua pertanyaan sudah dijawab
-		const unansweredQuestions = Object.values(answers).filter(
-			(answer) => answer === ""
-		);
-		if (unansweredQuestions.length > 0) {
-			setError("Silakan jawab semua pertanyaan");
-			return;
-		}
+	const handleDownload = async (format) => {
+		if (!result) return;
 
 		try {
-			// Siapkan data untuk dikirim ke backend
-			const userInfo = JSON.parse(sessionStorage.getItem("userInfo"));
-			const selectedHypothesis = sessionStorage.getItem("selectedHypothesis");
-
-			const submissionData = {
-				userId: userInfo.nama,
-				hypothesisId: selectedHypothesis,
-				answers: Object.entries(answers).map(([questionId, value]) => ({
-					questionId,
-					value,
-				})),
-			};
-
-			// Kirim data ke backend
-			const response = await axios.post(
-				"http://localhost:5000/api/submit-questionnaire",
-				submissionData
+			const response = await axios.get(
+				`http://localhost:5000/api/download-report/${result.id}?format=${format}`,
+				{
+					responseType: "blob",
+				}
 			);
 
-			// Simpan ID hasil untuk digunakan di halaman hasil
-			sessionStorage.setItem("resultId", response.data.resultId);
-
-			// Navigasi ke halaman hasil
-			navigate("/result");
+			// Buat URL untuk file yang diunduh
+			const url = window.URL.createObjectURL(new Blob([response.data]));
+			const link = document.createElement("a");
+			link.href = url;
+			link.setAttribute(
+				"download",
+				`hasil-analisis-${format === "excel" ? "excel.xlsx" : "pdf.pdf"}`
+			);
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
 		} catch (err) {
-			setError("Terjadi kesalahan saat mengirim jawaban");
+			setError(`Gagal mengunduh laporan dalam format ${format}`);
 			console.error(err);
 		}
 	};
-
-	// CFValues (Certainty Factor)
-	const cfValues = [
-		{ value: 1.0, text: "Sangat Yakin (100%)" },
-		{ value: 0.8, text: "Yakin (80%)" },
-		{ value: 0.6, text: "Cukup Yakin (60%)" },
-		{ value: 0.4, text: "Sedikit Yakin (40%)" },
-		{ value: 0.2, text: "Tidak Yakin (20%)" },
-		{ value: 0, text: "Tidak Tahu (0%)" },
-		{ value: -0.2, text: "Sedikit Tidak Yakin (-20%)" },
-		{ value: -0.4, text: "Tidak Yakin (-40%)" },
-		{ value: -0.6, text: "Cukup Tidak Yakin (-60%)" },
-		{ value: -0.8, text: "Yakin Tidak (-80%)" },
-		{ value: -1.0, text: "Sangat Yakin Tidak (-100%)" },
-	];
 
 	if (loading) {
 		return (
@@ -125,72 +82,140 @@ function Questionnaire() {
 		);
 	}
 
+	if (error && !result) {
+		return (
+			<div className="result-page">
+				<div className="alert alert-danger mb-4">{error}</div>
+				<div className="text-center">
+					<button
+						className="btn btn-primary"
+						onClick={() => navigate("/questionnaire")}
+					>
+						Kembali ke Kuesioner
+					</button>
+				</div>
+			</div>
+		);
+	}
+
 	return (
-		<div className="questionnaire-page">
-			<h2 className="mb-4 text-center">
-				Kuesioner Dampak Kecanduan Game Online
-			</h2>
+		<div className="result-page">
+			<h2 className="mb-4 text-center">Hasil Analisis</h2>
 			<div className="row justify-content-center">
 				<div className="col-lg-10">
-					<div className="card shadow">
-						<div className="card-body">
-							<p className="mb-4">
-								Jawab pertanyaan berikut sesuai dengan kondisi Anda saat ini.
-								Pilih tingkat keyakinan Anda untuk setiap pernyataan yang
-								diberikan.
-							</p>
+					{error && <div className="alert alert-danger">{error}</div>}
 
-							{error && <div className="alert alert-danger">{error}</div>}
-
-							<form onSubmit={handleSubmit}>
-								{questions.map((question, index) => (
-									<div className="mb-4 p-3 bg-light rounded" key={question.id}>
-										<p className="fw-bold mb-3">
-											{index + 1}. {question.text}
-										</p>
-										<div className="row">
-											{cfValues.map((cf) => (
-												<div
-													className="col-md-6"
-													key={`${question.id}-${cf.value}`}
-												>
-													<div className="form-check mb-2">
-														<input
-															className="form-check-input"
-															type="radio"
-															name={`question-${question.id}`}
-															id={`question-${question.id}-cf-${cf.value}`}
-															value={cf.value}
-															checked={
-																answers[question.id] === cf.value.toString()
-															}
-															onChange={() =>
-																handleAnswerChange(
-																	question.id,
-																	cf.value.toString()
-																)
-															}
-														/>
-														<label
-															className="form-check-label"
-															htmlFor={`question-${question.id}-cf-${cf.value}`}
-														>
-															{cf.text}
-														</label>
-													</div>
-												</div>
-											))}
-										</div>
-									</div>
-								))}
-
-								<div className="text-center mt-4">
-									<button type="submit" className="btn btn-primary btn-lg">
-										Kirim Jawaban
-									</button>
-								</div>
-							</form>
+					<div className="card shadow mb-4">
+						<div className="card-header bg-primary text-white">
+							<h3 className="h5 mb-0">Informasi Pengguna</h3>
 						</div>
+						<div className="card-body">
+							<div className="row">
+								<div className="col-md-6">
+									<p>
+										<strong>Nama:</strong> {result?.userInfo.nama}
+									</p>
+									<p>
+										<strong>Usia:</strong> {result?.userInfo.usia} tahun
+									</p>
+									<p>
+										<strong>Jenis Kelamin:</strong>{" "}
+										{result?.userInfo.jenisKelamin}
+									</p>
+								</div>
+								<div className="col-md-6">
+									<p>
+										<strong>Program Studi:</strong>{" "}
+										{result?.userInfo.programStudi}
+									</p>
+									<p>
+										<strong>Angkatan:</strong> {result?.userInfo.angkatan}
+									</p>
+									<p>
+										<strong>Domisili:</strong> {result?.userInfo.domisili}
+									</p>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div className="card shadow mb-4">
+						<div className="card-header bg-primary text-white">
+							<h3 className="h5 mb-0">Hasil Analisis Kecanduan Game Online</h3>
+						</div>
+						<div className="card-body">
+							<div className="d-flex justify-content-center mb-4">
+								<div className="text-center">
+									<div className="display-4 fw-bold text-primary">
+										{(result?.cfValue * 100).toFixed(2)}%
+									</div>
+									<p className="text-muted">
+										Tingkat Keyakinan (Certainty Factor)
+									</p>
+								</div>
+							</div>
+
+							<div className="alert alert-primary">
+								<h4 className="alert-heading">Diagnosis:</h4>
+								<p className="mb-0">{result?.diagnosis}</p>
+							</div>
+
+							<div className="mb-4">
+								<h4>Gejala yang Teridentifikasi:</h4>
+								<ul className="list-group">
+									{result?.identifiedSymptoms.map((symptom, index) => (
+										<li className="list-group-item" key={index}>
+											{symptom.symptomText}
+											<span className="badge bg-primary float-end">
+												CF: {(symptom.cfValue * 100).toFixed(2)}%
+											</span>
+										</li>
+									))}
+								</ul>
+							</div>
+
+							<div className="mb-4">
+								<h4>Rekomendasi:</h4>
+								<div className="card">
+									<div className="card-body">
+										<p className="mb-0">{result?.recommendation}</p>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<div className="text-center mb-5">
+						<p className="mb-3">Unduh laporan dalam format:</p>
+						<button
+							className="btn btn-success me-2"
+							onClick={() => handleDownload("excel")}
+						>
+							<i className="bi bi-file-earmark-excel me-2"></i>
+							Excel
+						</button>
+						<button
+							className="btn btn-danger"
+							onClick={() => handleDownload("pdf")}
+						>
+							<i className="bi bi-file-earmark-pdf me-2"></i>
+							PDF
+						</button>
+					</div>
+
+					<div className="text-center">
+						<button
+							className="btn btn-primary me-2"
+							onClick={() => navigate("/")}
+						>
+							Kembali ke Beranda
+						</button>
+						<button
+							className="btn btn-secondary"
+							onClick={() => navigate("/dashboard")}
+						>
+							Lihat Dashboard
+						</button>
 					</div>
 				</div>
 			</div>
@@ -198,4 +223,4 @@ function Questionnaire() {
 	);
 }
 
-export default Questionnaire;
+export default Result;

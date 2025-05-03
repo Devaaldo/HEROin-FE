@@ -100,19 +100,14 @@ function Questionnaire() {
 		}
 	};
 
-	// CFValues (Certainty Factor)
+	// CFValues (Certainty Factor) yang disederhanakan sesuai tabel
 	const cfValues = [
-		{ value: 1.0, text: "Sangat Yakin (100%)" },
-		{ value: 0.8, text: "Yakin (80%)" },
-		{ value: 0.6, text: "Cukup Yakin (60%)" },
-		{ value: 0.4, text: "Sedikit Yakin (40%)" },
-		{ value: 0.2, text: "Tidak Yakin (20%)" },
-		{ value: 0, text: "Tidak Tahu (0%)" },
-		{ value: -0.2, text: "Sedikit Tidak Yakin (-20%)" },
-		{ value: -0.4, text: "Tidak Yakin (-40%)" },
-		{ value: -0.6, text: "Cukup Tidak Yakin (-60%)" },
-		{ value: -0.8, text: "Yakin Tidak (-80%)" },
-		{ value: -1.0, text: "Sangat Yakin Tidak (-100%)" },
+		{ value: 1.0, text: "Sangat yakin" },
+		{ value: 0.8, text: "Yakin" },
+		{ value: 0.6, text: "Cukup Yakin" },
+		{ value: 0.4, text: "Hampir yakin" },
+		{ value: 0.2, text: "Kurang yakin" },
+		{ value: 0.0, text: "Tidak yakin" },
 	];
 
 	if (loading) {
@@ -151,7 +146,7 @@ function Questionnaire() {
 										<div className="row">
 											{cfValues.map((cf) => (
 												<div
-													className="col-md-6"
+													className="col-md-4"
 													key={`${question.id}-${cf.value}`}
 												>
 													<div className="form-check mb-2">
